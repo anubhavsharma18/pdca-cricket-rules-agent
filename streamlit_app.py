@@ -9,6 +9,8 @@ Set these secrets in the Streamlit Cloud dashboard (Settings → Secrets):
   AZURE_SEARCH_ENDPOINT = "..."
   AZURE_SEARCH_ADMIN_KEY = "..."
   AZURE_SEARCH_INDEX = "pdca-cricket-rules"
+  APP_PASSWORD = "your-password-here"   # optional — remove to disable password gate
+  MAX_QUESTIONS_PER_SESSION = "20"      # optional — limits questions per browser session
 """
 
 import requests
@@ -18,16 +20,18 @@ import streamlit as st
 # Config — reads from Streamlit secrets (cloud) or .env (local)
 # ---------------------------------------------------------------------------
 try:
-    # Streamlit Cloud: secrets set in dashboard
     API_KEY = st.secrets["AZURE_AI_API_KEY"]
     SEARCH_ENDPOINT = st.secrets["AZURE_SEARCH_ENDPOINT"]
     SEARCH_KEY = st.secrets["AZURE_SEARCH_ADMIN_KEY"]
     INDEX_NAME = st.secrets["AZURE_SEARCH_INDEX"]
+    APP_PASSWORD = st.secrets.get("APP_PASSWORD", None)
+    MAX_QUESTIONS = int(st.secrets.get("MAX_QUESTIONS_PER_SESSION", 50))
 except (KeyError, FileNotFoundError):
-    # Local dev: fall back to .env
     from dotenv import load_dotenv
     import os
     load_dotenv()
+    APP_PASSWORD = None
+    MAX_QUESTIONS = 50
     API_KEY = os.getenv("AZURE_AI_API_KEY")
     SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT")
     SEARCH_KEY = os.getenv("AZURE_SEARCH_ADMIN_KEY")
@@ -94,6 +98,39 @@ st.set_page_config(
     page_icon="🏏",
     layout="centered",
 )
+
+# ---------------------------------------------------------------------------
+# Password gate — only shown if APP_PASSWORD secret is set
+# ---------------------------------------------------------------------------
+if APP_PASSWORD:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.title("🏏 PDCA Cricket Rules Assistant")
+        st.markdown("This app is password protected. Enter the password to continue.")
+        pwd = st.text_input("Password", type="password")
+        if st.button("Enter"):
+            if pwd == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+
+# ---------------------------------------------------------------------------
+# Question limit per session
+# ---------------------------------------------------------------------------
+if "question_count" not in st.session_state:
+    st.session_state.question_count = 0
+
+if st.session_state.question_count >= MAX_QUESTIONS:
+    st.title("🏏 PDCA Cricket Rules Assistant")
+    st.warning(
+        f"You've reached the limit of {MAX_QUESTIONS} questions for this session. "
+        "Refresh the page to start a new session."
+    )
+    st.stop()
 
 st.title("🏏 PDCA Cricket Rules Assistant")
 st.caption(
@@ -168,6 +205,8 @@ if user_input:
     # Build message list for API (system + history)
     messages = [{"role": "system", "content": st.session_state.system_instructions}]
     messages.extend(st.session_state.chat_history)
+
+    st.session_state.question_count += 1
 
     with st.chat_message("assistant"):
         with st.spinner("Looking up the rules…"):
