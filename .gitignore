@@ -1,0 +1,7 @@
+.env
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+docs/pdca/*.pdf
+docs/pdca_extracted.json
+docs/mcc_laws.json
